@@ -1,0 +1,114 @@
+######## Broken Bank yaml file 
+
+---
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: gocortex
+
+---
+apiVersion: v1
+kind: Secret
+metadata:
+  name: gocortex-secrets
+  namespace: gocortex
+type: Opaque
+stringData:
+  SESSION_SECRET: "hardcoded-docker-secret-key"
+
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: gocortex-broken-bank
+  namespace: gocortex
+  labels:
+    app: gocortex-broken-bank
+spec:
+  replicas: 1
+  strategy:
+    type: Recreate
+  selector:
+    matchLabels:
+      app: gocortex-broken-bank
+  template:
+    metadata:
+      labels:
+        app: gocortex-broken-bank
+    spec:
+      containers:
+        - name: gocortex-broken-bank
+          image: gocortexio/gocortexbrokenbank:latest
+          imagePullPolicy: Always
+          ports:
+            - name: http-7777
+              containerPort: 7777
+            - name: http-8888
+              containerPort: 8888
+            - name: http-8080
+              containerPort: 8080
+          env:
+            - name: SESSION_SECRET
+              valueFrom:
+                secretKeyRef:
+                  name: gocortex-secrets
+                  key: SESSION_SECRET
+            - name: DATABASE_URL
+              value: "sqlite:///app/instance/gocortexbrokenbank.db"
+            - name: FLASK_ENV
+              value: "production"
+          volumeMounts:
+            - name: data
+              mountPath: /app/instance
+          resources:
+            requests:
+              cpu: 200m
+              memory: 512Mi
+            limits:
+              cpu: 1000m
+              memory: 1Gi
+          readinessProbe:
+            httpGet:
+              path: /
+              port: 7777
+            initialDelaySeconds: 15
+            periodSeconds: 10
+            timeoutSeconds: 5
+            failureThreshold: 3
+          livenessProbe:
+            httpGet:
+              path: /
+              port: 7777
+            initialDelaySeconds: 15
+            periodSeconds: 20
+            timeoutSeconds: 5
+      volumes:
+        - name: data
+          emptyDir: {}
+
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: gocortex-broken-bank
+  namespace: gocortex
+  annotations:
+    service.beta.kubernetes.io/aws-load-balancer-type: nlb
+    service.beta.kubernetes.io/aws-load-balancer-scheme: internet-facing
+spec:
+  type: LoadBalancer
+  selector:
+    app: gocortex-broken-bank
+  ports:
+    - name: port-7777
+      port: 7777
+      targetPort: 7777
+      protocol: TCP
+    - name: port-8888
+      port: 8888
+      targetPort: 8888
+      protocol: TCP
+    - name: port-9999
+      port: 9999
+      targetPort: 8080
+      protocol: TCP
